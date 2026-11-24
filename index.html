@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>전개도 접기 놀이 · Fold the Net</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:"Pretendard","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;background:#fdf8f0;color:#2b2b2b}
+.wrap{max-width:960px;margin:0 auto;padding:20px 16px 32px}
+h1{margin:0 0 4px;font-size:1.6rem}
+.sub{margin:0 0 16px;color:#777}
+.shapes{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.shapes button{border:2px solid #e3d8c6;background:#fff;border-radius:14px;padding:8px 14px;font-size:1rem;cursor:pointer;line-height:1.2}
+.shapes button small{display:block;color:#999;font-size:.75rem}
+.shapes button.on{border-color:#ff7a59;background:#fff1ec}
+.main{display:grid;grid-template-columns:1fr 240px;gap:16px}
+@media(max-width:720px){.main{grid-template-columns:1fr}}
+.stage{background:#fff;border-radius:20px;box-shadow:0 4px 18px rgba(0,0,0,.06);position:relative}
+canvas{width:100%;height:420px;display:block;touch-action:none;cursor:grab}
+.hint{position:absolute;left:14px;bottom:10px;font-size:.8rem;color:#aaa}
+.ctrl{display:flex;align-items:center;gap:12px;margin-top:12px}
+.ctrl input{flex:1;accent-color:#ff7a59;height:28px}
+.big{border:none;background:#ff7a59;color:#fff;font-size:1.05rem;font-weight:700;padding:12px 20px;border-radius:14px;cursor:pointer;min-width:130px}
+.pct{width:48px;text-align:right;font-variant-numeric:tabular-nums;color:#888}
+.card{background:#fff;border-radius:20px;padding:16px;box-shadow:0 4px 18px rgba(0,0,0,.06)}
+.card h2{margin:0 0 2px;font-size:1.25rem}
+.card .en{color:#999;margin:0 0 12px}
+.row{display:flex;justify-content:space-between;padding:8px 0;border-top:1px dashed #eee;font-size:1rem}
+.row b{font-size:1.2rem}
+.euler{margin-top:12px;background:#f3f8ff;border-radius:12px;padding:10px;font-size:.9rem;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📦 전개도 접기 놀이</h1>
+  <p class="sub">평면 전개도가 입체도형으로 접히는 모습을 직접 확인해 보세요. · Fold the net into a 3D shape!</p>
+  <div class="shapes" id="shapes"></div>
+  <div class="main">
+    <div>
+      <div class="stage"><canvas id="cv"></canvas><span class="hint">드래그해서 돌려 보세요 · Drag to rotate</span></div>
+      <div class="ctrl">
+        <button class="big" id="play">접기 ▶</button>
+        <input type="range" id="sl" min="0" max="100" value="0">
+        <span class="pct" id="pct">0%</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2 id="nm"></h2><p class="en" id="en"></p>
+      <div class="row"><span>면 Faces</span><b id="F"></b></div>
+      <div class="row"><span>꼭짓점 Vertices</span><b id="V"></b></div>
+      <div class="row"><span>모서리 Edges</span><b id="E"></b></div>
+      <div class="euler" id="eu"></div>
+    </div>
+  </div>
+</div>
+<script>
+const D=Math.PI/180;
+const NETS={
+ cube:{faces:[{n:4},{n:4,p:0,e:0,f:90},{n:4,p:0,e:1,f:90},{n:4,p:0,e:2,f:90},{n:4,p:0,e:3,f:90},{n:4,p:1,e:2,f:90}]},
+ tetra:{faces:[{n:3},{n:3,p:0,e:0,f:109.4712},{n:3,p:0,e:1,f:109.4712},{n:3,p:0,e:2,f:109.4712}]},
+ pyramid:{faces:[{n:4},{n:3,p:0,e:0,f:125.2644},{n:3,p:0,e:1,f:125.2644},{n:3,p:0,e:2,f:125.2644},{n:3,p:0,e:3,f:125.2644}]},
+ prism:{faces:[{n:4},{n:4,p:0,e:1,f:120},{n:4,p:0,e:3,f:120},{n:3,p:0,e:0,f:90},{n:3,p:0,e:2,f:90}]},
+ octa:{faces:[{n:3},{n:3,p:0,e:0,f:70.5288},{n:3,p:0,e:1,f:70.5288},{n:3,p:0,e:2,f:70.5288},{n:3,p:1,e:1,f:70.5288},{n:3,p:2,e:1,f:70.5288},{n:3,p:3,e:1,f:70.5288},{n:3,p:4,e:2,f:70.5288}]},
+};
+function regPoly(n,s){const v=[[0,0]];let x=0,y=0,a=0;for(let i=1;i<n;i++){x+=s*Math.cos(a);y+=s*Math.sin(a);v.push([x,y]);a+=2*Math.PI/n;}return v;}
+function layout(net){const F=net.faces;F.forEach((f,k)=>{let C=regPoly(f.n,1);if(k===0){f.flat=C;return;}const P=F[f.p].flat,m=P.length;const a=P[f.e],b=P[(f.e+1)%m];const c0=C[0],c1=C[1];const ang=Math.atan2(a[1]-b[1],a[0]-b[0])-Math.atan2(c1[1]-c0[1],c1[0]-c0[0]);const cs=Math.cos(ang),sn=Math.sin(ang);f.flat=C.map(([x,y])=>[b[0]+(x-c0[0])*cs-(y-c0[1])*sn,b[1]+(x-c0[0])*sn+(y-c0[1])*cs]);f.axA=[a[0],a[1],0];f.axB=[b[0],b[1],0];});return net;}
+function rot(p,a,b,th){const k=[b[0]-a[0],b[1]-a[1],b[2]-a[2]];const L=Math.hypot(...k);k[0]/=L;k[1]/=L;k[2]/=L;const q=[p[0]-a[0],p[1]-a[1],p[2]-a[2]];const c=Math.cos(th),s=Math.sin(th),d=k[0]*q[0]+k[1]*q[1]+k[2]*q[2];const x=[k[1]*q[2]-k[2]*q[1],k[2]*q[0]-k[0]*q[2],k[0]*q[1]-k[1]*q[0]];return[0,1,2].map(i=>q[i]*c+x[i]*s+k[i]*d*(1-c)+a[i]);}
+function fold(net,t){return net.faces.map((f,k)=>f.flat.map(([x,y])=>{let p=[x,y,0],j=k;while(j!==0){const g=net.faces[j];p=rot(p,g.axA,g.axB,-g.f*D*t);j=g.p;}return p;}));}
+const INFO={
+ cube:{ko:'정육면체',en:'Cube',F:6,V:8,E:12},
+ prism:{ko:'삼각기둥',en:'Triangular Prism',F:5,V:6,E:9},
+ pyramid:{ko:'사각뿔',en:'Square Pyramid',F:5,V:5,E:8},
+ tetra:{ko:'정사면체',en:'Tetrahedron',F:4,V:4,E:6},
+ octa:{ko:'정팔면체',en:'Octahedron',F:8,V:6,E:12}};
+const COLORS=['#ff7a59','#ffc145','#5cc8a8','#4f9dff','#b07cff','#ff8fb1','#7ad36b','#ffa26b'];
+Object.values(NETS).forEach(layout);
+let key='cube',t=0,target=null,rx=-0.55,ry=0.6;
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),sl=document.getElementById('sl'),pct=document.getElementById('pct'),play=document.getElementById('play');
+const box=document.getElementById('shapes');
+Object.keys(INFO).forEach(k=>{const b=document.createElement('button');b.innerHTML=INFO[k].ko+'<small>'+INFO[k].en+'</small>';b.onclick=()=>select(k);b.dataset.k=k;box.appendChild(b);});
+function select(k){key=k;t=0;target=null;sl.value=0;[...box.children].forEach(b=>b.classList.toggle('on',b.dataset.k===k));const I=INFO[k];
+ document.getElementById('nm').textContent=I.ko;document.getElementById('en').textContent=I.en;
+ F.textContent=I.F;V.textContent=I.V;E.textContent=I.E;
+ document.getElementById('eu').innerHTML='🔎 <b>오일러 공식</b><br>꼭짓점 − 모서리 + 면<br>= '+I.V+' − '+I.E+' + '+I.F+' = <b>'+(I.V-I.E+I.F)+'</b>';updUI();}
+function updUI(){sl.value=Math.round(t*100);pct.textContent=Math.round(t*100)+'%';play.textContent=(target===1||(target===null&&t<1))?'접기 ▶':'펼치기 ◀';if(target!==null)play.textContent=target===1?'접는 중…':'펴는 중…';}
+play.onclick=()=>{target=t>=1?0:1;};
+sl.oninput=()=>{target=null;t=sl.value/100;updUI();};
+let drag=null;
+cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing';});
+cv.addEventListener('pointermove',e=>{if(!drag)return;ry+=(e.clientX-drag[0])*0.01;rx+=(e.clientY-drag[1])*0.01;drag=[e.clientX,e.clientY];});
+cv.addEventListener('pointerup',()=>{drag=null;cv.style.cursor='grab';});
+function resize(){const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;ctx.setTransform(d,0,0,d,0,0);}
+addEventListener('resize',resize);
+function frame(){
+ if(target!==null){const s=0.012;t+=target>t?s:-s;if(Math.abs(t-target)<s){t=target;target=null;}updUI();}
+ if(!drag&&target===null&&t>=1)ry+=0.004;
+ const W=cv.clientWidth,H=cv.clientHeight;ctx.clearRect(0,0,W,H);
+ const faces=fold(NETS[key],t);const all=faces.flat();
+ const c=[0,1,2].map(i=>all.reduce((a,p)=>a+p[i],0)/all.length);
+ let R=0;all.forEach(p=>R=Math.max(R,Math.hypot(p[0]-c[0],p[1]-c[1],p[2]-c[2])));
+ const cx=Math.cos(rx),sx=Math.sin(rx),cy=Math.cos(ry),sy=Math.sin(ry);
+ const tr=p=>{let x=p[0]-c[0],y=p[1]-c[1],z=p[2]-c[2];let x1=x*cy+z*sy,z1=-x*sy+z*cy;let y1=y*cx-z1*sx,z2=y*sx+z1*cx;return[x1,y1,z2];};
+ const sc=Math.min(W,H)*0.38/R,cam=R*4;
+ const list=faces.map((f,i)=>{const P=f.map(tr);const u=[P[1][0]-P[0][0],P[1][1]-P[0][1],P[1][2]-P[0][2]],v=[P[2][0]-P[0][0],P[2][1]-P[0][1],P[2][2]-P[0][2]];
+  const n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];const L=Math.hypot(...n);
+  const z=P.reduce((a,p)=>a+p[2],0)/P.length;return{P,i,z,l:Math.abs(n[0]*-0.3+n[1]*-0.5+n[2]*0.8)/L};});
+ list.sort((a,b)=>a.z-b.z);
+ list.forEach(o=>{ctx.beginPath();o.P.forEach((p,j)=>{const k=cam/(cam+p[2]);const X=W/2+p[0]*sc*k,Y=H/2+p[1]*sc*k;j?ctx.lineTo(X,Y):ctx.moveTo(X,Y);});ctx.closePath();
+  ctx.fillStyle=COLORS[o.i%8];ctx.globalAlpha=0.92;ctx.fill();ctx.globalAlpha=1;
+  ctx.fillStyle='rgba(0,0,0,'+(0.35*(1-o.l)).toFixed(3)+')';ctx.fill();
+  ctx.lineWidth=2;ctx.strokeStyle='#fff';ctx.lineJoin='round';ctx.stroke();});
+ requestAnimationFrame(frame);}
+resize();select('cube');frame();
+</script>
+</body>
+</html>
